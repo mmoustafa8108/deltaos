@@ -233,7 +233,7 @@ void apic_send_startup_ipi(uint32 apic_id, uint8 vector) {
 void apic_timer_init(uint32 hz) {
     if (!apic_available) return;
 
-    printf("[apic] Calibrating timer...\n");
+    printf("[apic] Calibrating timer for cpu %d...\n", arch_cpu_index());
 
     //tell APIC timer to use divider 16
     apic_write(APIC_TIMER_DCR, 0x03);
