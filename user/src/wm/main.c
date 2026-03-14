@@ -16,6 +16,7 @@ static bool debug = true;
 #endif
 
 #define FB_BACKBUFFER_SIZE  (1280 * 800 * sizeof(uint32))
+handle_t fb_handle = INVALID_HANDLE;
 
 #define SCREEN_WIDTH    1280
 #define SCREEN_HEIGHT   800
@@ -49,12 +50,18 @@ static int load_wallpaper(void);
 static void free_wallpaper(void);
 static void render_wallpaper(uint32 *fb_backbuffer);
 
+static uint32 *saved_fb = NULL;
+
 void fb_setup(handle_t *h, uint32 **backbuffer) {
     *h = get_obj(INVALID_HANDLE, "$devices/fb0", RIGHT_READ | RIGHT_WRITE);
     ASSERT(*h == INVALID_HANDLE, "Failed to get framebuffer handle\n");
     *backbuffer = malloc(FB_BACKBUFFER_SIZE);
     ASSERT(!*backbuffer, "Failed to allocate global surface\n");
     INFO("Framebuffer and backbuffer setup OK (handle=%d)\n", (int)*h);
+
+    saved_fb = malloc(FB_BACKBUFFER_SIZE);
+    handle_seek(*h, 0, HANDLE_SEEK_SET);
+    handle_read(*h, saved_fb, FB_BACKBUFFER_SIZE);
 }
 
 void server_setup(handle_t *server, handle_t *client) {
@@ -504,14 +511,50 @@ int32 mouse_x = FB_W / 2;
 int32 mouse_y = FB_H / 2;
 mouse_event_t mprev = {0};
 
-void handle_input() {
+typedef struct {
+    uint8 mods;
+    uint32 codepoint;
+    void (*callback)(void);
+} keybind_t;
+
+void kbind_exit(void) {
+    INFO("Exiting...\n");
+    handle_seek(fb_handle, 0, HANDLE_SEEK_SET);
+    handle_write(fb_handle, saved_fb, FB_BACKBUFFER_SIZE);
+    free(saved_fb);
+    exit(0);
+}
+
+void kbind_cycle(void) {
     if (focused == -1) return;
+    focused = (focused + 1) % num_clients;
+}
+
+void kbind_kill(void) {
+    if (focused == -1) return;
+    client_remove_at(focused);
+}
+
+keybind_t keybinds[] = (keybind_t[]){
+    { KBD_MOD_ALT, 'm', kbind_exit },
+    { KBD_MOD_ALT, '\t', kbind_cycle },
+    { KBD_MOD_ALT | KBD_MOD_SHIFT, 'Q', kbind_kill },
+};
+
+void handle_input() {
     kbd_event_t ev;
     if (kbd_try_read(&ev) == 0) {
-        if (focused < 0 || focused >= num_clients) {
-            WARN("Got keyboard event but focused index invalid: %d\n", focused);
-            return;
+        // handle our own things first
+        for (size_t i = 0; i < sizeof(keybinds) / sizeof(keybinds[0]); i++) {
+            if (keybinds[i].mods == ev.mods && keybinds[i].codepoint == ev.codepoint && ev.pressed) {
+                keybinds[i].callback();
+                return;
+            }
         }
+
+        // then forward if possible
+        if (focused < 0 || focused >= num_clients) return;
+
         wm_server_msg_t msg = {
             .type = KBD,
             .u.kbd = { .data = ev },
@@ -521,7 +564,7 @@ void handle_input() {
             WARN("Failed to forward keyboard to pid=%u idx=%d rc=%d - tearing down\n", clients[focused].pid, focused, rc);
             client_teardown_by_index(focused);
         } else {
-            INFO("Forwarded keyboard to pid=%u idx=%d key=%c down=%u\n", clients[focused].pid, focused, ev.codepoint, ev.pressed);
+            INFO("Forwarded keyboard to pid=%u idx=%d key=%X down=%u mods=%b\n", clients[focused].pid, focused, ev.codepoint, ev.pressed, ev.mods);
         }
     }
     mouse_event_t m;
@@ -559,10 +602,8 @@ void handle_input() {
         mprev = m;
    
         //now we forward if possible
-        if (focused < 0 || focused >= num_clients) {
-            WARN("Got mouse event but focused index invalid: %d\n", focused);
-            continue;
-        }
+        if (focused < 0 || focused >= num_clients) continue;
+
         wm_server_msg_t msg = {
             .type = MOUSE,
             .u.mouse = {
@@ -592,7 +633,6 @@ void render_mouse(uint32 *fb) {
 }
 
 int main(void) {
-    handle_t fb_handle = INVALID_HANDLE;
     uint32 *fb_backbuffer = NULL;
     handle_t server_handle = INVALID_HANDLE;
     handle_t client_handle = INVALID_HANDLE;

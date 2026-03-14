@@ -257,6 +257,29 @@ static int do_printf(print_ctx_t *ctx, const char *format, va_list args) {
                     ctx_putc(ctx, '0' + digit);
                     frac -= digit;
                 }
+            } else if (*p == 'b') {
+                uintmax num;
+
+                if (is_long || is_size)
+                    num = va_arg(args, unsigned long);
+                else
+                    num = va_arg(args, unsigned int);
+
+                char tmp[64];
+                int len = 0;
+
+                if (num == 0) {
+                    tmp[len++] = '0';
+                } else {
+                    while (num) {
+                        tmp[len++] = (num & 1) ? '1' : '0';
+                        num >>= 1;
+                    }
+                }
+
+                // reverse to MSB-first
+                for (int i = len - 1; i >= 0; i--)
+                    ctx_putc(ctx, tmp[i]);
             } else if (*p == '%') {
                 ctx_putc(ctx, '%');
             } else {
