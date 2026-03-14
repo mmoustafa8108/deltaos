@@ -16,6 +16,7 @@ static bool debug = true;
 #endif
 
 #define FB_BACKBUFFER_SIZE  (1280 * 800 * sizeof(uint32))
+handle_t fb_handle = INVALID_HANDLE;
 
 #define SCREEN_WIDTH    1280
 #define SCREEN_HEIGHT   800
@@ -49,12 +50,18 @@ static int load_wallpaper(void);
 static void free_wallpaper(void);
 static void render_wallpaper(uint32 *fb_backbuffer);
 
+static uint32 *saved_fb = NULL;
+
 void fb_setup(handle_t *h, uint32 **backbuffer) {
     *h = get_obj(INVALID_HANDLE, "$devices/fb0", RIGHT_READ | RIGHT_WRITE);
     ASSERT(*h == INVALID_HANDLE, "Failed to get framebuffer handle\n");
     *backbuffer = malloc(FB_BACKBUFFER_SIZE);
     ASSERT(!*backbuffer, "Failed to allocate global surface\n");
     INFO("Framebuffer and backbuffer setup OK (handle=%d)\n", (int)*h);
+
+    saved_fb = malloc(FB_BACKBUFFER_SIZE);
+    handle_seek(*h, 0, HANDLE_SEEK_SET);
+    handle_read(*h, saved_fb, FB_BACKBUFFER_SIZE);
 }
 
 void server_setup(handle_t *server, handle_t *client) {
@@ -510,23 +517,36 @@ typedef struct {
     void (*callback)(void);
 } keybind_t;
 
-void kbind_ctrl(void) {
-    INFO("ooooooh\n");
+void kbind_exit(void) {
+    INFO("Exiting...\n");
+    handle_seek(fb_handle, 0, HANDLE_SEEK_SET);
+    handle_write(fb_handle, saved_fb, FB_BACKBUFFER_SIZE);
+    free(saved_fb);
+    exit(0);
+}
+
+void kbind_cycle(void) {
+    if (focused == -1) return;
+    focused = (focused + 1) % num_clients;
+}
+
+void kbind_kill(void) {
+    if (focused == -1) return;
+    client_remove_at(focused);
 }
 
 keybind_t keybinds[] = (keybind_t[]){
-    {
-        KBD_MOD_CTRL, 'b', kbind_ctrl
-    }
+    { KBD_MOD_ALT, 'm', kbind_exit },
+    { KBD_MOD_ALT, '\t', kbind_cycle },
+    { KBD_MOD_ALT | KBD_MOD_SHIFT, 'Q', kbind_kill },
 };
 
 void handle_input() {
-    if (focused == -1) return;
     kbd_event_t ev;
     if (kbd_try_read(&ev) == 0) {
         // handle our own things first
         for (size_t i = 0; i < sizeof(keybinds) / sizeof(keybinds[0]); i++) {
-            if (keybinds[i].mods == ev.mods && keybinds[i].codepoint == ev.codepoint) {
+            if (keybinds[i].mods == ev.mods && keybinds[i].codepoint == ev.codepoint && ev.pressed) {
                 keybinds[i].callback();
                 return;
             }
@@ -617,7 +637,6 @@ void render_mouse(uint32 *fb) {
 }
 
 int main(void) {
-    handle_t fb_handle = INVALID_HANDLE;
     uint32 *fb_backbuffer = NULL;
     handle_t server_handle = INVALID_HANDLE;
     handle_t client_handle = INVALID_HANDLE;
