@@ -20,7 +20,7 @@ handle_t fb_handle = INVALID_HANDLE;
 size fb_size = 1280 * 800 * sizeof(uint32);
 size screen_width = 1280;
 size screen_height = 800;
-size screen_bbp = sizeof(uint32);
+size screen_bpp = sizeof(uint32);
 
 #define ASSERT(expr, msg, ...) do { if (expr) { dprintf("\033[31m[wm]: ERROR: "); dprintf(msg, ##__VA_ARGS__); dprintf("\033[0m"); exit(1); } } while (0)
 #define ERROR(msg, ...) do { dprintf("\033[31m[wm]: ERROR: "); dprintf(msg, ##__VA_ARGS__); dprintf("\033[0m"); } while (0)
@@ -62,8 +62,8 @@ void fb_setup(handle_t *h, uint32 **backbuffer) {
         fb_size = st.height * st.pitch;
         screen_width = st.width;
         screen_height = st.height;
-        screen_bbp = st.pitch / st.width;
-        INFO("Detected screen dimensions %dx%d@%d\n", screen_width, screen_height, screen_bbp);
+        screen_bpp = st.pitch / st.width;
+        INFO("Detected screen dimensions %dx%d@%d\n", screen_width, screen_height, screen_bpp);
     }
 
 
@@ -94,7 +94,7 @@ static void client_remove_at(int idx) {
     c->status = DEAD;
 
     if (c->surface) {
-        vmo_unmap(c->surface, (size)c->surface_w * (size)c->surface_h * screen_bbp);
+        vmo_unmap(c->surface, (size)c->surface_w * (size)c->surface_h * screen_bpp);
         c->surface = NULL;
     }
 
@@ -148,7 +148,8 @@ static void recompute_layout(uint16 screen_w, uint16 screen_h) {
                 .x = (uint16)c->x,
                 .y = (uint16)c->y,
                 .w = (uint16)c->win_w,
-                .h = (uint16)c->win_h
+                .h = (uint16)c->win_h,
+                .bpp = (uint16)screen_bpp,
             }
         };
 
@@ -174,7 +175,7 @@ void window_create(handle_t *server, channel_recv_result_t res, wm_client_msg_t 
     }
 
     char path[64];
-    size needed = (size)req.u.create.width * (size)req.u.create.height * screen_bbp;
+    size needed = (size)req.u.create.width * (size)req.u.create.height * screen_bpp;
     handle_t client_vmo = vmo_create(needed, VMO_FLAG_RESIZABLE, RIGHT_MAP);
     if (client_vmo == INVALID_HANDLE) {
         ERROR("vmo_create failed for pid=%u size=%zu\n", res.sender_pid, needed);
@@ -210,6 +211,7 @@ void window_create(handle_t *server, channel_recv_result_t res, wm_client_msg_t 
         .vmo = client_vmo,
         .surface_w = req.u.create.width,
         .surface_h = req.u.create.height,
+        .surface_bpp = screen_bpp,
         .win_w = req.u.create.width,
         .win_h = req.u.create.height,
         .x = 0,
@@ -291,12 +293,12 @@ void server_listen(handle_t *server) {
                 }
 
                 if (clients[i].surface) {
-                    vmo_unmap(clients[i].surface, (size)clients[i].surface_w * (size)clients[i].surface_h * screen_bbp);
+                    vmo_unmap(clients[i].surface, (size)clients[i].surface_w * (size)clients[i].surface_h * screen_bpp);
                     clients[i].surface = NULL;
                 }
                 clients[i].surface_w = cmsg.u.resize.width;
                 clients[i].surface_h = cmsg.u.resize.height;
-                size needed = (size)clients[i].surface_w * (size)clients[i].surface_h * screen_bbp;
+                size needed = (size)clients[i].surface_w * (size)clients[i].surface_h * screen_bpp;
                 clients[i].surface = vmo_map(clients[i].vmo, NULL, 0, needed, RIGHT_MAP);
                 if (!clients[i].surface) {
                     ERROR("vmo_map failed for pid=%u idx=%d\n", clients[i].pid, i);
@@ -414,7 +416,7 @@ static int load_wallpaper(void) {
         wallpaper.height = screen_height;
         wallpaper.loaded = true;
     } else {
-        uint32 *scaled = malloc((size)screen_width * (size)screen_height * screen_bbp);
+        uint32 *scaled = malloc((size)screen_width * (size)screen_height * sizeof(uint32));
         if (!scaled) {
             WARN("malloc for scaled wallpaper failed\n");
             free(tmp_pixels);
@@ -498,7 +500,7 @@ void render_surfaces(uint32 *fb_backbuffer) {
         for (int row = 0; row < copy_h; row++) {
             uint32 *src_row = c->surface + (size)(src_y0 + row) * c->surface_w + src_x0;
             uint32 *dst_row = fb_backbuffer + (size)(dst_y0 + row) * screen_width + dst_x0;
-            memcpy(dst_row, src_row, (size)copy_w * screen_bbp);
+            memcpy(dst_row, src_row, (size)copy_w * sizeof(uint32));
         }
 
         c->dirty = false;

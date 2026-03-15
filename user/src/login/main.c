@@ -28,7 +28,7 @@ int main(void) {
             
             putc(c);
             
-            if (c == '\n') {
+            if (c == '\n' || pos >= 128) {
                 username[pos] = '\0';
                 break;
             } else {
@@ -51,7 +51,7 @@ int main(void) {
                 continue;
             }
             
-            if (c == '\n') {
+            if (c == '\n' || pos >= 256) {
                 passwd[pos] = '\0';
                 break;
             } else {
@@ -66,6 +66,10 @@ int main(void) {
         // TODO: actual passwd logic lol
         if (strcmp(username, passwd) == 0) {
             int pid = spawn("$files/system/binaries/shell", 0, NULL);
+            if (pid < 0) {
+                puts("Failed to spawn shell!\n");
+                continue;
+            }
             wait(pid);
         }
     }
