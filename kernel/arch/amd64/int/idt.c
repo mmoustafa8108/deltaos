@@ -12,7 +12,7 @@
 #include <arch/amd64/int/ioapic.h>
 #include <arch/smp.h>
 #include <proc/sched.h>
-
+#include <proc/process.h>
 
 struct idt_entry {
 	uint16    isr_low;      // The lower 16 bits of the ISR's address
@@ -43,10 +43,18 @@ static void irq0_handler(int from_usermode) {
     sched_tick(from_usermode);  //preemptive scheduling - only preempt if from usermode
 }
 
-
 void interrupt_handler(uint64 vector, uint64 error_code, uint64 rip, interrupt_frame_t *frame) {
     if (vector < 32) {
-        kpanic(frame, "CPU EXCEPTION (vector 0x%lX, err 0x%lX) at RIP=0x%lX", vector, error_code, rip);
+        // TODO: this is a basic impl
+        // we should probably have our own POSIX signal equivalent
+        process_t *p = process_current();
+        if (p) {
+            p->exit_code = 127 + vector;
+            thread_exit();
+            return;
+        } else {
+            kpanic(frame, "CPU EXCEPTION (vector 0x%lX, err 0x%lX) at RIP=0x%lX", vector, error_code, rip);
+        }
     } else {
         uint8 irq = vector - 32;
 

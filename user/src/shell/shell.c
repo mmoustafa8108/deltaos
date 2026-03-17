@@ -4,7 +4,7 @@
 #include <keyboard.h>
 
 static void cmd_help(void) {
-    puts("Commands: help, echo, cd, pwd, spawn, wm, ls, exit\n");
+    puts("Commands: help, echo, cd, pwd, spawn, wm, dir, exit\n");
 }
 
 static void cmd_echo(char *args) {
@@ -23,18 +23,7 @@ static void cmd_spawn(char *path) {
         printf("spawn: failed to start %s (error %d)\n", path, child);
     } else {
         printf("spawn: started %s (PID %d)\n", path, child);
-        wait(child);
-    }
-}
-
-static void cmd_wm(void) {
-    int child = spawn("$files/system/binaries/wm", 0, NULL);
-    if (child < 0) {
-        printf("wm: failed to start (error %d)\n", child);
-    } else {
-        printf("wm: started (PID %d)\n", child);
-        spawn("$files/system/binaries/app", 0, NULL);
-        wait(child);
+        printf("spawn: child died with code %d\n", wait(child));
     }
 }
 
@@ -73,8 +62,6 @@ static void process_command(char *line) {
         cmd_pwd();
     } else if (streq(cmd, "spawn")) {
         cmd_spawn(strtok(NULL, " \t\n"));
-    } else if (streq(cmd, "wm")) {
-        cmd_wm();
     } else if (streq(cmd, "exit")) {
         puts("Goodbye!\n");
         exit(0);
@@ -101,7 +88,13 @@ static void process_command(char *line) {
             if (child < 0) {
                 printf("Unknown command: %s\n", cmd);
             } else {
-                wait(child);
+                int code = wait(child);
+                if (code == 141) {
+                    printf("Page fault; process killed.\n");
+                }
+                else if (code != 0) {
+                    printf("Child died with error code %d\n", code);
+                }
             }
         } else {
             printf("Unknown command: %s\n", cmd);

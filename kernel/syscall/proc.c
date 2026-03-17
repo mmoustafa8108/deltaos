@@ -10,7 +10,7 @@
 #include <obj/handle.h>
 
 intptr sys_exit(intptr status) {
-    (void)status;
+    process_current()->exit_code = status;
     thread_exit();
     return 0;
 }
@@ -202,7 +202,7 @@ intptr sys_wait(uintptr pid) {
     if (!proc) return -1;
     
     thread_sleep(&proc->exit_wait);
-    return 0;
+    return proc->exit_code;
 }
 
 intptr sys_process_create(const char *name) {
