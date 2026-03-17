@@ -1,8 +1,9 @@
 name: Create TODO Issues
 
 on:
-  pull_request:
-    types: [opened, synchronize]
+  pull_request_target:
+    types: [closed]
+    branches: [main]
 
 jobs:
   create_todo_issues:
