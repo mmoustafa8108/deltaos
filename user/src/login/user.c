@@ -2,6 +2,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <fs.h>
 
 #include "user.h"
 #include "passwd.h"
@@ -23,6 +24,18 @@ int create_user(const char* username, const char* pt_pwd) {
     uint8_t shabuf[32];
     sha256(pt_pwd, strlen(pt_pwd), shabuf);
     sha256_to_hex(shabuf, pwd.pwd_hash);
+    
+    struct stat st;
+    if (stat("/etc/passwd", &st) < 0) {
+        if (stat("/etc", &st) < 0) {
+            if (mkdir("etc") < 0) {
+                return -1;
+            }
+        }
+        if (mkfile("etc/passwd") < 0) {
+            return -1;
+        }
+    }
     
     FILE* passwd = fopen("/etc/passwd", "aw");
     if (passwd == NULL) {
@@ -87,7 +100,7 @@ enum verif_stat verify_user(const char* username, const char* pt_pwd) {
     sha256(pt_pwd, strlen(pt_pwd), shabuf);
     sha256_to_hex(shabuf, shahex);
     
-    if (ct_memcmp(passwd->pwd_hash, shahex, 64) == 0) {
+    if (ct_memcmp(passwd->pwd_hash, shahex, 64)) {
         code = V_VALID;
     } else {
         code = V_EWPWD;
