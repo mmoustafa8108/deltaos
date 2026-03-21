@@ -2,7 +2,6 @@
 #include <system.h>
 #include "user.h"
 #include <keyboard.h>
-#include <stdlib.h>
 
 int main(void) {
     if (kbd_init() < 0) return 1;
