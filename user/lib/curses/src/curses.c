@@ -185,6 +185,8 @@ void curses_shutdown(void) {
         curses_prev_cells = NULL;
     }
     curses_ready = false;
+
+    putc('\f'); // clear the screen!
 }
 
 void curses_reset_style(void) {
