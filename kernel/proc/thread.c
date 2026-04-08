@@ -78,6 +78,7 @@ thread_t *thread_create(process_t *proc, void (*entry)(void *), void *arg) {
         return NULL;
     }
     thread->kernel_stack_size = KERNEL_STACK_SIZE;
+    arch_fpu_init_thread(&thread->fpu_state);
     
     //setup initial context - trampoline will enable interrupts and call real entry
     void *stack_top = (char *)thread->kernel_stack + KERNEL_STACK_SIZE;
@@ -122,9 +123,10 @@ void thread_destroy(thread_t *thread) {
     kfree(thread->kernel_stack);
     kfree(thread);
     
-    //if this was the last thread, destroy the process too
+    //if this was the last thread, leave the process as a zombie until waited on
     if (proc && proc->thread_count == 0 && proc->pid != 0) {
-        process_destroy(proc);
+        proc->state = PROC_STATE_ZOMBIE;
+        thread_wake_all(&proc->exit_wait);
     }
 }
 
@@ -190,6 +192,7 @@ thread_t *thread_create_user(process_t *proc, void *entry, void *user_stack) {
         return NULL;
     }
     thread->kernel_stack_size = KERNEL_STACK_SIZE;
+    arch_fpu_init_thread(&thread->fpu_state);
     
     //setup usermode state in user_context
     arch_context_init_user(&thread->user_context, user_stack, entry, NULL);
@@ -209,6 +212,11 @@ thread_t *thread_create_user(process_t *proc, void *entry, void *user_stack) {
 }
 
 void thread_exit(void) {
+    thread_t *current = thread_current();
+    if (current) {
+        arch_fpu_thread_exit(current);
+    }
+
     //just delegate to scheduler
     sched_exit();
 }

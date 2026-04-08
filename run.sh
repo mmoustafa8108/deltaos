@@ -4,7 +4,7 @@ set -e
 #config
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DISK_IMG="hda.img"
-DISK_SIZE_MB=64
+DISK_SIZE_MB=128
 NVME_IMG="nvme.img"
 NVME_SIZE_MB=128
 FAT32_IMG="$ROOT_DIR/fat32.img"
@@ -246,7 +246,7 @@ run_qemu() {
     local QEMU_ARGS=(
         -machine "$machine_spec"
         -cpu qemu64
-        -m 256M
+        -m 512M
         -drive "if=pflash,format=raw,readonly=on,file=$OVMF_CODE"
         -drive "file=$DISK_IMG,format=raw"
         -drive "file=$NVME_IMG,format=raw,if=none,id=nvm"

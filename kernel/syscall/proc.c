@@ -200,9 +200,17 @@ intptr sys_spawn(const char *path, int argc, char **argv) {
 intptr sys_wait(uintptr pid) {
     process_t *proc = process_find(pid);
     if (!proc) return -1;
-    
-    thread_sleep(&proc->exit_wait);
-    return proc->exit_code;
+
+    while (proc->state != PROC_STATE_ZOMBIE && proc->state != PROC_STATE_DEAD) {
+        thread_sleep(&proc->exit_wait);
+
+        proc = process_find(pid);
+        if (!proc) return -1;
+    }
+
+    int64 exit_code = proc->exit_code;
+    process_destroy(proc);
+    return exit_code;
 }
 
 intptr sys_process_create(const char *name) {

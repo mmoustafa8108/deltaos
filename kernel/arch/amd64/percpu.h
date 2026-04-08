@@ -68,8 +68,9 @@ typedef struct percpu {
     volatile uint32 sched_running; //112: 1 if scheduler is active on this CPU
     volatile uint32 in_sched;      //116: 1 if currently inside a schedule operation
     volatile uint64 recovery_rip;           //120: RIP to jump to on fault during safe copy
+    void *fpu_owner;                 //128: thread whose FP state is currently live on this CPU
     
-    //128+: synchronisation
+    //136+: synchronisation
     spinlock_irq_t sched_lock;
 } percpu_t;
 
@@ -92,4 +93,3 @@ void percpu_set_kernel_stack(void *stack_top);
 uint32 percpu_cpu_count(void);
 
 #endif
-

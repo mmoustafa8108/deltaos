@@ -4,6 +4,7 @@
 #include <arch/context.h>
 #include <arch/interrupts.h>
 #include <arch/mmu.h>
+#include <arch/fpu.h>
 #include <lib/io.h>
 #include <drivers/serial.h>
 #include <lib/spinlock.h>
@@ -204,6 +205,9 @@ static void sched_activate(thread_t *next) {
     //set kernel stack for ring 3 -> ring 0 transitions
     void *kernel_stack_top = (char *)next->kernel_stack + next->kernel_stack_size;
     arch_set_kernel_stack(kernel_stack_top);
+
+    //use TS to defer FP state work until the thread actually executes FP code
+    arch_fpu_activate_thread(next);
 }
 
 //pick next thread and switch to it
@@ -413,6 +417,9 @@ void sched_start(void) {
     //set kernel stack for ring 3 -> ring 0 transitions
     void *kernel_stack_top = (char *)first->kernel_stack + first->kernel_stack_size;
     arch_set_kernel_stack(kernel_stack_top);
+
+    //defer FP state work until the thread actually needs it
+    arch_fpu_activate_thread(first);
     
     //mark scheduler as running so sched_yield/sched_tick work from here on
     pc->sched_running = 1;
