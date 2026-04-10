@@ -177,7 +177,11 @@ void keyboard_irq(void) {
     //rn we only support the simple set-1 make/break path here
     //reating these as keys turns
     //boot-time controller chatter into garbage characters later
-    if (sc == KBD_DEV_ACK || sc == KBD_DEV_RESEND || sc == KBD_DEV_SELFTEST_OK || sc == KBD_DEV_ECHO) {
+    if (sc == KBD_DEV_ACK || sc == KBD_DEV_RESEND || sc == KBD_DEV_ECHO) {
+        return;
+    }
+    if (sc == KBD_DEV_SELFTEST_OK && !(mods & KBD_MOD_SHIFT)) {
+        // they clash so if shift wasnt pressed down, probably wasn't the shift sc
         return;
     }
     if (sc == KBD_SC_EXTENDED_0 || sc == KBD_SC_EXTENDED_1) {
@@ -189,9 +193,9 @@ void keyboard_irq(void) {
         return;
     }
 
-    bool released = (sc & SC_RELEASE) != 0;
+    bool released = (sc & SC_RELEASE);
     uint8 code = sc & 0x7F;
-    
+
     //update modifiers
     if (code == SC_SHIFT_L || code == SC_SHIFT_R) {
         if (released) mods &= ~KBD_MOD_SHIFT;

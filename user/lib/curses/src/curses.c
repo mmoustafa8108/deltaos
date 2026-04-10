@@ -242,6 +242,7 @@ void curses_shutdown(void) {
         curses_restore_terminal();
     }
     if (curses_vt != INVALID_HANDLE) {
+        handle_write(curses_vt, "\f", 1);
         handle_close(curses_vt);
         curses_vt = INVALID_HANDLE;
     }

@@ -690,7 +690,7 @@ int main(void) {
 
     load_wallpaper();
     render_surfaces(fb_backbuffer);
-
+    
     while (1) {
         server_listen(&server_handle);
         handle_input();
