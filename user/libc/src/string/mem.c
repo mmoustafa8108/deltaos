@@ -28,6 +28,17 @@ __attribute__((weak)) void *memmove(void *dest, const void *src, size n) {
     return dest;
 }
 
+void *memchr(const void *s, int c, size n) {
+    const unsigned char *p = s;
+    unsigned char needle = (unsigned char)c;
+
+    for (size i = 0; i < n; i++) {
+        if (p[i] == needle) return (void *)(p + i);
+    }
+
+    return NULL;
+}
+
 int memcmp(const void *s1, const void *s2, size n) {
     const unsigned char *p1 = s1;
     const unsigned char *p2 = s2;
