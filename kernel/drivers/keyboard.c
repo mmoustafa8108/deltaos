@@ -24,6 +24,14 @@
 #define PS2_CMD_READ_CONFIG     0x20
 #define PS2_CMD_WRITE_CONFIG    0x60
 #define PS2_CMD_ENABLE_PORT1    0xAE
+#define KBD_DEV_DISABLE_SCAN    0xF5
+#define KBD_DEV_ENABLE_SCAN     0xF4
+#define KBD_DEV_ACK             0xFA
+#define KBD_DEV_RESEND          0xFE
+#define KBD_DEV_SELFTEST_OK     0xAA
+#define KBD_DEV_ECHO            0xEE
+#define KBD_SC_EXTENDED_0       0xE0
+#define KBD_SC_EXTENDED_1       0xE1
 
 //scancode flags
 #define SC_RELEASE      0x80
@@ -34,6 +42,7 @@
 
 //modifier state
 static uint8 mods = 0;
+static bool extended_prefix = false;
 
 static const char scancodes_normal[128] = {
     0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b', '\t',
@@ -65,6 +74,21 @@ static void ps2_wait_read(void) {
     //same reason as ps2_wait_write
     int timeout = 100000;
     while (!(inb(KBD_STATUS) & 1) && --timeout);
+}
+
+//must be called with ps2_lock held
+static void ps2_kbd_flush_locked(void) {
+    while (inb(KBD_STATUS) & 1) {
+        inb(KBD_SC);
+    }
+}
+
+//must be called with ps2_lock held
+static uint8 ps2_kbd_cmd_locked(uint8 cmd) {
+    ps2_wait_write();
+    outb(KBD_SC, cmd);
+    ps2_wait_read();
+    return inb(KBD_SC);
 }
 
 //push event to channel
@@ -149,6 +173,22 @@ void keyboard_irq(void) {
         return;
     }
 
+    //ignore device replies and extended prefixes 
+    //rn we only support the simple set-1 make/break path here
+    //reating these as keys turns
+    //boot-time controller chatter into garbage characters later
+    if (sc == KBD_DEV_ACK || sc == KBD_DEV_RESEND || sc == KBD_DEV_SELFTEST_OK || sc == KBD_DEV_ECHO) {
+        return;
+    }
+    if (sc == KBD_SC_EXTENDED_0 || sc == KBD_SC_EXTENDED_1) {
+        extended_prefix = true;
+        return;
+    }
+    if (extended_prefix) {
+        extended_prefix = false;
+        return;
+    }
+
     bool released = (sc & SC_RELEASE) != 0;
     uint8 code = sc & 0x7F;
     
@@ -177,6 +217,12 @@ void keyboard_irq(void) {
 void keyboard_init(void) {
     irq_state_t flags = spinlock_irq_acquire(&ps2_lock);
 
+    //stop the keyboard from queueing more scan codes while we reconfigure the 8042
+    (void)ps2_kbd_cmd_locked(KBD_DEV_DISABLE_SCAN);
+    ps2_kbd_flush_locked();
+    mods = 0;
+    extended_prefix = false;
+
     //explicitly enable the first PS/2 port and IRQ1 instead of relying on
     //firmware leaving the 8042 in a keyboard-friendly state
     ps2_wait_write();
@@ -197,9 +243,12 @@ void keyboard_init(void) {
     outb(KBD_SC, config);
 
     //flush any pending scancodes
-    while (inb(KBD_STATUS) & 1) {
-        inb(KBD_SC);
-    }
+    ps2_kbd_flush_locked();
+
+    //re-enable scanning only after the controller and our local parser
+    //state are back in sync
+    (void)ps2_kbd_cmd_locked(KBD_DEV_ENABLE_SCAN);
+    ps2_kbd_flush_locked();
     spinlock_irq_release(&ps2_lock, flags);
 
     interrupt_unmask(1);

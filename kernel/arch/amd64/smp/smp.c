@@ -7,6 +7,7 @@
 #include <arch/amd64/acpi/acpi.h>
 #include <arch/amd64/mmu.h>
 #include <arch/amd64/cpu.h>
+#include <arch/fpu.h>
 #include <mm/mm.h>
 #include <mm/pmm.h>
 #include <mm/vmm.h>
@@ -194,6 +195,7 @@ void ap_entry(uint32 cpu_index) {
     
     //enable SSE for this AP
     enable_sse();
+    arch_fpu_init();
     
     //initialize this AP's scheduler
     sched_init_ap();

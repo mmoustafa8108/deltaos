@@ -21,6 +21,7 @@ int strncmp(const char *s1, const char *s2, size n);
 void *memcpy(void *dest, const void *src, size len);
 void *memset(void *s, int c, size len);
 void *memmove(void *dest, const void *src, size len);
+void *memchr(const void *s, int c, size len);
 int memcmp(const void *s1, const void *s2, size len);
 
 #endif

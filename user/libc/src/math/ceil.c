@@ -1,3 +1,7 @@
 double ceil(double x) {
-    return (double)((int)x + 1);
+    long long i = (long long)x;
+    if ((double)i < x) {
+        i++;
+    }
+    return (double)i;
 }

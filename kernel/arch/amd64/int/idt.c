@@ -6,13 +6,14 @@
 #include <drivers/mouse.h>
 #include <drivers/rtl8139.h>
 #include <drivers/vt/vt.h>
-#include <drivers/xhci.h>
+#include <drivers/usb/xhci.h>
 #include <lib/io.h>
 #include <arch/amd64/context.h>
 #include <arch/amd64/int/apic.h>
 #include <arch/amd64/int/ioapic.h>
 #include <arch/percpu.h>
 #include <arch/smp.h>
+#include <arch/fpu.h>
 #include <mm/kheap.h>
 #include <proc/sched.h>
 #include <proc/process.h>
@@ -171,6 +172,10 @@ static void irq0_handler(int from_usermode) {
 
 void interrupt_handler(uint64 vector, uint64 error_code, uint64 rip, interrupt_frame_t *frame) {
     if (vector < 32) {
+        if (vector == 7 && arch_fpu_handle_device_not_available() == 0) {
+            return;
+        }
+
         //check for safe-copy recovery
         if (vector == PAGE_FAULT_VECTOR) {
             percpu_t *cpu = percpu_get();

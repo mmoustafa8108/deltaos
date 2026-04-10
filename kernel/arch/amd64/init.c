@@ -17,6 +17,7 @@
 #include <arch/amd64/acpi/acpi.h>
 #include <arch/amd64/smp/smp.h>
 #include <arch/percpu.h>
+#include <arch/fpu.h>
 
 extern void kernel_main(const char *cmdline);
 extern void enable_sse(void);
@@ -76,6 +77,7 @@ void arch_init(struct db_boot_info *boot_info) {
     proc_init();
     
     enable_sse();
+    arch_fpu_init();
     puts("[amd64] SSE enabled\n");
     
     //set up interrupt infrastructure
