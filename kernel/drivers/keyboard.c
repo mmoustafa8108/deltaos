@@ -178,7 +178,10 @@ void keyboard_irq(void) {
     //reating these as keys turns
     //boot-time controller chatter into garbage characters later
     if (sc == KBD_DEV_ACK || sc == KBD_DEV_RESEND || sc == KBD_DEV_SELFTEST_OK || sc == KBD_DEV_ECHO) {
-        return;
+        //KBD_DEV_SELFTEST_OK (aka 0xAA) clashes with the "left shift released" scancode 0xAA
+        //im not sure what to do about it other than just let them through tbh
+        //ima make this a TODO
+        if (sc != KBD_DEV_SELFTEST_OK) return;
     }
     if (sc == KBD_SC_EXTENDED_0 || sc == KBD_SC_EXTENDED_1) {
         extended_prefix = true;
@@ -189,9 +192,9 @@ void keyboard_irq(void) {
         return;
     }
 
-    bool released = (sc & SC_RELEASE) != 0;
+    bool released = (sc & SC_RELEASE);
     uint8 code = sc & 0x7F;
-    
+
     //update modifiers
     if (code == SC_SHIFT_L || code == SC_SHIFT_R) {
         if (released) mods &= ~KBD_MOD_SHIFT;
