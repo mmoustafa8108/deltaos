@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
             putc(buf[i]);
         }
     }
-    
+    printf("\n");
     handle_close(file);
     return 0;
 }
