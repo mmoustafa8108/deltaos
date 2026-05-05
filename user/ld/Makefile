@@ -3,7 +3,7 @@ AS = as
 LD = ld
 
 #ld.so is loaded at fixed addressso  no need for PIC
-CFLAGS = -ffreestanding -fno-builtin -fno-stack-protector -fno-pic -m64 -O0 -std=c11 -I../libc/include -nostdlib
+CFLAGS = -ffreestanding -fno-builtin -fno-stack-protector -fno-pic -m64 -O0 -std=c11 -I../libc/include -I../../include -nostdlib
 ASFLAGS = 
 LDFLAGS = -nostdlib -static -T link.ld
 

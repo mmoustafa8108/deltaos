@@ -133,6 +133,11 @@ static const xhci_quirk_match_t xhci_quirk_matches[] = {
       "AMD Promontory A1 no-soft-retry" },
 
     //Intel / Thunderbolt class controllers
+    { 0x8086, 0x1E31,
+      XHCI_QUIRK_PANTHERPOINT |
+      XHCI_QUIRK_INTEL_HOST |
+      XHCI_QUIRK_DEFAULT_PM_RUNTIME_ALLOW,
+      "Intel Panther Point host" },
     { 0x8086, 0x8C31,
       XHCI_QUIRK_PANTHERPOINT |
       XHCI_QUIRK_INTEL_HOST |

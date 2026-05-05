@@ -126,7 +126,9 @@ void thread_destroy(thread_t *thread) {
     
     //if this was the last thread, leave the process as a zombie until waited on
     if (proc && proc->thread_count == 0 && proc->pid != 0) {
+        spinlock_acquire(&proc->lock);
         proc->state = PROC_STATE_ZOMBIE;
+        spinlock_release(&proc->lock);
         thread_wake_all(&proc->exit_wait);
         process_t *parent = process_find_ref(proc->parent_pid);
         if (parent) {

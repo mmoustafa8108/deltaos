@@ -136,7 +136,7 @@ void px_update_window(px_window_t *win) {
 }
 
 px_image_t *px_load_image(char *path) {
-    handle_t h = get_obj(INVALID_HANDLE, path, RIGHT_READ);
+    handle_t h = get_obj(INVALID_HANDLE, path, RIGHT_READ | RIGHT_GET_INFO);
     if (h == INVALID_HANDLE) return NULL;
     
     stat_t st;

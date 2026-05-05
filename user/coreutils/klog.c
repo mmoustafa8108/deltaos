@@ -6,7 +6,7 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
     
-    handle_t log = get_obj(INVALID_HANDLE, "$devices/klog", RIGHT_READ);
+    handle_t log = get_obj(INVALID_HANDLE, "$devices/klog", RIGHT_READ | RIGHT_GET_INFO);
     if (log == INVALID_HANDLE) {
         puts("klog: cannot access $devices/klog\n");
         return 1;

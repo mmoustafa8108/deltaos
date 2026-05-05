@@ -391,11 +391,14 @@ typedef struct {
     uint8              evt_ccs;      //consumer cycle state (starts at 1)
     spinlock_irq_t     evt_lock;     //serialises event ring drain/ack across CPUs
     bool               hid_recovery_needed; //set when HC reports lost/full event ring
+    bool               event_polling;       //drain event ring from a thread when MSI is unusable
 
     //deferred HID reports (filled under evt_lock, processed after release)
     hid_pending_t      hid_pending[HID_PENDING_MAX];
     uint32             hid_pending_count;
     bool               disconnect_ports[256]; //pending port-disconnect cleanup
+    bool               port_proto_valid[256]; //port has a Supported Protocol cap entry
+    bool               port_is_usb3[256];      //decoded protocol is USB3/SuperSpeed
     uint64             quirks;
 
     //MSI-X

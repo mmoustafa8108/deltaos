@@ -340,15 +340,19 @@ intptr sys_wait(uintptr pid) {
     process_t *proc = process_find_ref(pid);
     if (!proc) return -1;
 
-    while (proc->state != PROC_STATE_ZOMBIE && proc->state != PROC_STATE_DEAD) {
-        thread_sleep(&proc->exit_wait);
+    spinlock_acquire(&proc->lock);
+    while (proc->state != PROC_STATE_ZOMBIE) {
+        thread_sleep_locked(&proc->exit_wait, &proc->lock);
+        spinlock_release(&proc->lock);
 
         process_unref(proc);
         proc = process_find_ref(pid);
         if (!proc) return -1;
+        spinlock_acquire(&proc->lock);
     }
 
     int64 exit_code = proc->exit_code;
+    spinlock_release(&proc->lock);
     process_destroy(proc);
     process_unref(proc);
     return exit_code;
@@ -381,11 +385,11 @@ intptr sys_handle_grant(handle_t proc_h, handle_t local_h, handle_rights_t right
     process_t *current = process_current();
     if (!current) return -1;
 
-    object_t *proc_obj = process_get_handle(current, proc_h);
-    if (!proc_obj || proc_obj->type != OBJECT_PROCESS) return -2;
-    if (!process_handle_has_rights(current, proc_h, HANDLE_RIGHT_WRITE)) return -5;
+    proc_handle_t *proc_entry = process_get_handle_entry(current, proc_h);
+    if (!proc_entry || !proc_entry->obj || proc_entry->obj->type != OBJECT_PROCESS) return -2;
+    if (!rights_has(proc_entry->rights, HANDLE_RIGHT_WRITE)) return -5;
 
-    process_t *target = (process_t *)proc_obj->data;
+    process_t *target = (process_t *)proc_entry->obj->data;
     if (!target) return -3;
 
     proc_handle_t *entry = process_get_handle_entry(current, local_h);
@@ -401,11 +405,11 @@ intptr sys_process_start(handle_t proc_h, uintptr entry, uintptr stack) {
     process_t *current = process_current();
     if (!current) return -1;
 
-    object_t *proc_obj = process_get_handle(current, proc_h);
-    if (!proc_obj || proc_obj->type != OBJECT_PROCESS) return -2;
-    if (!process_handle_has_rights(current, proc_h, HANDLE_RIGHT_EXECUTE)) return -5;
+    proc_handle_t *proc_entry = process_get_handle_entry(current, proc_h);
+    if (!proc_entry || !proc_entry->obj || proc_entry->obj->type != OBJECT_PROCESS) return -2;
+    if (!rights_has(proc_entry->rights, HANDLE_RIGHT_EXECUTE)) return -5;
 
-    process_t *target = (process_t *)proc_obj->data;
+    process_t *target = (process_t *)proc_entry->obj->data;
     if (!target) return -3;
 
     thread_t *thread = thread_create_user(target, (void *)entry, (void *)stack);
@@ -498,17 +502,7 @@ intptr sys_proc_event_return(void) {
 
 intptr sys_proc_set_console_foreground(uintptr pid) {
     process_t *current = process_current();
-    process_t *target;
 
     if (!current) return -1;
-    if (pid != 0) {
-        target = process_find_ref(pid);
-        if (!target) return -1;
-        if (target->pid != current->pid && target->parent_pid != current->pid) {
-            process_unref(target);
-            return -1;
-        }
-        process_unref(target);
-    }
     return proc_set_console_foreground(current, pid);
 }

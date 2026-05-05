@@ -346,7 +346,7 @@ static void scale_nearest_neighbour(const uint32 *src, int sw, int sh, uint32 *d
 }
 
 static int load_wallpaper(void) {
-    handle_t h = get_obj(INVALID_HANDLE, "$files/wallpaper.dm", RIGHT_READ);
+    handle_t h = get_obj(INVALID_HANDLE, "$files/wallpaper.dm", RIGHT_READ | RIGHT_GET_INFO);
     if (h == INVALID_HANDLE) {
         WARN("No wallpaper present at $files/wallpaper.dm; using solid background\n");
         wallpaper.loaded = false;
@@ -576,7 +576,7 @@ void kbind_test(void) {
     spawn("/system/binaries/app", 0, NULL);
 }
 
-keybind_t keybinds[] = {
+static const keybind_t keybinds[] = {
     { KBD_MOD_ALT, 'm', kbind_exit },
     { KBD_MOD_ALT, '\t', kbind_cycle },
     { KBD_MOD_ALT | KBD_MOD_SHIFT, 'Q', kbind_kill },

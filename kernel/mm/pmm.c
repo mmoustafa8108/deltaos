@@ -218,6 +218,7 @@ skip_kernel_reserve:;
         }
     }
 skip_initrd_reserve:
+    ;
 
     //reserve page 0
     if (!BITMAP_TEST(0)) {

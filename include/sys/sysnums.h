@@ -1,7 +1,7 @@
 #ifndef __SYS_SYSNUMS_H
 #define __SYS_SYSNUMS_H
 
-//process management (SYS_INIT to 31)
+//process management
 #define SYS_EXIT            0
 #define SYS_GETPID          1
 #define SYS_YIELD           2
@@ -12,13 +12,13 @@
 #define SYS_HANDLE_GRANT    51  //inject handle into child process
 #define SYS_PROCESS_START   52  //start initial thread in process
 
-//object/handle management (32-41)
+//object/handle management
 #define SYS_GET_OBJ         5   //get object from namespace
 #define SYS_HANDLE_CLOSE    32
 #define SYS_HANDLE_DUP      33
 #define SYS_NS_REGISTER     42  //register handle in namespace
 
-//ipc: channels (44-49)
+//ipc: channels
 #define SYS_CHANNEL_CREATE  34
 #define SYS_CHANNEL_SEND    35
 #define SYS_CHANNEL_RECV    36
@@ -26,7 +26,7 @@
 #define SYS_CHANNEL_RECV_MSG 45  //receive with handles
 #define SYS_CHANNEL_TRY_RECV_MSG 46 //non-blocking recv_msg
 
-//memory: vmos (53-56)
+//memory: vmos
 #define SYS_VMO_CREATE      37
 #define SYS_VMO_READ        38
 #define SYS_VMO_WRITE       39
@@ -34,7 +34,7 @@
 #define SYS_VMO_UNMAP       41  //unmap from address space
 #define SYS_VMO_RESIZE      53  //resize a vmo
 
-//filesystem (57-60)
+//filesystem, context, and process events
 #define SYS_STAT            43  //get file status by path
 #define SYS_FSTAT           60  //get file status by handle
 #define SYS_READDIR         54  //read directory entries
@@ -65,10 +65,10 @@
 #define SYS_REBOOT          61  //reboot the system
 #define SYS_SHUTDOWN        62  //shutdown the system
 
-//object info (63)
+//object info
 #define SYS_OBJECT_GET_INFO 63
 
-//networking (64+)
+//networking
 #define SYS_PING            64  //send ICMP ping and wait for reply
 #define SYS_DNS_RESOLVE     65
 #define SYS_TCP_CONNECT     66  //connect to host:port, returns socket handle

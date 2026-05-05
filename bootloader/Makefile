@@ -42,4 +42,4 @@ $(BOOTLOADER): $(BOOT_OBJS)
 
 clean:
 	rm -f $(BOOTLOADER)
-	find . -type f -name *.o -exec rm {} \;
+	find . -type f -name '*.o' -delete

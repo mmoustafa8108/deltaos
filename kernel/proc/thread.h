@@ -64,7 +64,7 @@ typedef struct thread {
     uint8 event_returning;
 
     //which context slot should proc_event_return() restore into
-    uint8 event_restore_slot;
+    event_restore_slot_t event_restore_slot;
     
     //scheduler state
     int cpu_id;             //ID of CPU currently running this thread (-1 if none)

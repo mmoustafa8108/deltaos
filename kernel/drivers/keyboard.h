@@ -1,6 +1,8 @@
 #ifndef ARCH_AMD64_DRIVERS_KEYBOARD_H
 #define ARCH_AMD64_DRIVERS_KEYBOARD_H
 
+#include <arch/types.h>
+
 void keyboard_irq(void);
 bool get_key(char *c);
 bool get_keystate(char c);
