@@ -7,15 +7,7 @@ typedef unsigned int uint32_t;
 typedef unsigned short uint16_t;
 typedef unsigned char uint8_t;
 
-//syscall numbers
-#define SYS_EXIT        0
-#define SYS_DEBUG_WRITE 3
-#define SYS_GET_OBJ     5
-#define SYS_HANDLE_READ 6
-#define SYS_HANDLE_CLOSE 32
-#define SYS_VMO_CREATE  37
-#define SYS_VMO_MAP     40
-#define SYS_STAT        43
+#include <sys/sysnums.h>
 
 #define HANDLE_RIGHT_DUPLICATE  (1 << 0)
 #define HANDLE_RIGHT_TRANSFER   (1 << 1)

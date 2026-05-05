@@ -32,6 +32,14 @@ static uint64       g_ctrl_bar[XHCI_MAX_CTRLS];
 static spinlock_irq_t g_ctrl_lock = SPINLOCK_IRQ_INIT;
 static bool g_xhci_boot_started = false;
 
+//ntel PCH xHC/EHCI mux registers,
+//panther/ lynx /wildcat point can leave ports routed to EHCI until the kernel
+//explicitly enables superspeed terminations and switches USB2 wires to xHCI
+#define INTEL_XUSB2PR       0xD0
+#define INTEL_XUSB2PRM      0xD4
+#define INTEL_USB3_PSSEN    0xD8
+#define INTEL_USB3PRM       0xDC
+
 //forward declarations
 static void xhci_drain_events(xhci_ctrl_t *c);
 static void xhci_ack_events(xhci_ctrl_t *c);
@@ -41,8 +49,11 @@ static uint32 xhci_poll_pending_hid(xhci_ctrl_t *c);
 static void xhci_recover_hid_endpoints(xhci_ctrl_t *c);
 static void xhci_queue_intr(xhci_ctrl_t *c, xhci_device_t *dev);
 static int xhci_claim_bios_ownership(xhci_ctrl_t *c, uint32 hccparams1);
+static void xhci_decode_supported_protocols(xhci_ctrl_t *c, uint32 hccparams1);
+static void xhci_intel_route_ports_to_xhci(xhci_ctrl_t *c);
 static void xhci_scan_controllers(void);
 static void xhci_boot_worker(void *arg);
+static void xhci_event_poll_worker(void *arg);
 
 static void *xhci_dma_alloc(xhci_ctrl_t *c, uint32 pages) {
     if (c && c->dma32_only) {
@@ -460,6 +471,78 @@ static int xhci_claim_bios_ownership(xhci_ctrl_t *c, uint32 hccparams1) {
     return 0;
 }
 
+//decode supported protocol capabilities so the boot log shows which physical
+//ports belong to USB2 vs USB3, 0.96 hardware often needs this to make
+//sense of connected but never enabled failures
+static void xhci_decode_supported_protocols(xhci_ctrl_t *c, uint32 hccparams1) {
+    uint32 off = HCCPARAMS1_XECP(hccparams1) << 2;
+
+    for (uint32 i = 0; off && i < 64; i++) {
+        uint32 hdr = cap_read32(c, off);
+        uint8 cap_id = hdr & 0xFF;
+        uint32 next = ((hdr >> 8) & 0xFFFF) << 2;
+
+        if (cap_id == XHCI_EXT_CAPS_PROTOCOL) {
+            uint32 rev = hdr >> 16;
+            uint32 name = cap_read32(c, off + 4);
+            uint32 port_info = cap_read32(c, off + 8);
+            uint8 major = (uint8)((rev >> 8) & 0xFF);
+            uint8 minor = (uint8)(rev & 0xFF);
+            uint8 port_offset = (uint8)(port_info & 0xFF);
+            uint8 port_count = (uint8)((port_info >> 8) & 0xFF);
+            bool usb_named = (name == 0x20425355); //"USB "
+            bool usb3 = usb_named && major >= 3;
+
+            if (port_offset != 0 && port_count != 0) {
+                uint8 first = port_offset - 1;
+                uint8 last = first + port_count;
+                if (last > c->max_ports) last = c->max_ports;
+                for (uint8 p = first; p < last; p++) {
+                    c->port_proto_valid[p] = true;
+                    c->port_is_usb3[p] = usb3;
+                }
+            }
+
+            printf("[xhci] protocol cap: USB %u.%u ports %u..%u\n",
+                   major, minor, port_offset,
+                   port_count ? (port_offset + port_count - 1) : port_offset);
+        }
+
+        off = next;
+    }
+}
+
+//intel switchable xHCI controllers share ports with EHCI, so route every port the
+//hardware advertises as switchable to xHCI before reset/enumeration so devices
+//do not stay invisible behind the EHCI side of the mux
+static void xhci_intel_route_ports_to_xhci(xhci_ctrl_t *c) {
+    if (!c || !c->pci) return;
+    if (!xhci_has_quirk(c, XHCI_QUIRK_PANTHERPOINT)) return;
+
+    pci_device_t *pci = c->pci;
+
+    //USB3 uses a separate SuperSpeed termination enable mask
+    //some firmware leaves the mask unreadable/zero so fall back to all bits
+    //like the old Linux quirk path did for panther point
+    uint32 usb3_mask = pci_config_read(pci->bus, pci->dev, pci->func, INTEL_USB3PRM, 4);
+    if (!usb3_mask) usb3_mask = 0xFFFFFFFF;
+
+    pci_config_write(pci->bus, pci->dev, pci->func, INTEL_USB3_PSSEN, 4, usb3_mask);
+    uint32 usb3_enabled = pci_config_read(pci->bus, pci->dev, pci->func, INTEL_USB3_PSSEN, 4);
+
+    //USB2 data/power routing is controlled separately from USB3 termination
+    //switch it after enabling USB3 so SuperSpeed devices do not first attach as
+    //plain high-speed devices during early boot
+    uint32 usb2_mask = pci_config_read(pci->bus, pci->dev, pci->func, INTEL_XUSB2PRM, 4);
+    if (!usb2_mask) usb2_mask = 0xFFFFFFFF;
+
+    pci_config_write(pci->bus, pci->dev, pci->func, INTEL_XUSB2PR, 4, usb2_mask);
+    uint32 usb2_routed = pci_config_read(pci->bus, pci->dev, pci->func, INTEL_XUSB2PR, 4);
+
+    printf("[xhci] Intel routing: USB3_PSSEN=0x%08X XUSB2PR=0x%08X\n",
+           usb3_enabled, usb2_routed);
+}
+
 //wait for a command completion event
 static int xhci_wait_cmd(xhci_ctrl_t *c) {
     //poll
@@ -859,7 +942,7 @@ static void build_config_hid_ctx(xhci_ctrl_t *c, xhci_device_t *dev,
     } else if (hid_proto == USB_HID_PROTO_KEYBOARD && ep_interval < 3) {
         ep_interval = 3;
     }
-    
+
     //NEC host erratum: rejects LS/FS interrupt endpoints with interval < 6
     if (xhci_has_quirk(c, XHCI_QUIRK_NEC_HOST) && ep_interval < 6) {
         ep_interval = 6;
@@ -875,7 +958,7 @@ static void build_config_hid_ctx(xhci_ctrl_t *c, xhci_device_t *dev,
         ep_interval >= 7) {
         ep_interval = 6;
     }
-    
+
     if (ep_interval > 15) ep_interval = 15;
 
     ctx_wr(ep, 0, (uint32)ep_interval << 16);
@@ -1010,7 +1093,7 @@ static void xhci_ack_events(xhci_ctrl_t *c) {
     //clear interrupt-pending in the interrupter first
     uint32 iman = rt_read32(c, XHCI_RT_IMAN(0));
     rt_write32(c, XHCI_RT_IMAN(0), iman | IMAN_IP);
-    
+
     //clear pending status bits (all W1C): event interrupt, port-change detect,
     //and host-system-error, leaving HSE/PCD latched can cause IRQ storms
     op_write32(c, XHCI_OP_USBSTS, USBSTS_EINT | USBSTS_PCD | USBSTS_HSE);
@@ -1025,7 +1108,7 @@ static void xhci_process_events(xhci_ctrl_t *c) {
     //concurrent drain on another CPU can observe hid_intr_queued in a
     //stale state, which would permanently kill the interrupt pipe on SMP
     irq_state_t fl = spinlock_irq_acquire(&c->evt_lock);
-    
+
     //clear interrupt status before draining to avoid race conditions on 0.96 ocntrollers
     uint32 iman = rt_read32(c, XHCI_RT_IMAN(0));
     rt_write32(c, XHCI_RT_IMAN(0), iman | IMAN_IP);
@@ -1033,7 +1116,7 @@ static void xhci_process_events(xhci_ctrl_t *c) {
 
     c->hid_pending_count = 0;
     xhci_drain_events(c);
-    
+
     //update ERDP and clear EHB after draining
     evt_update_erdp(c);
     uint32 n_pending = c->hid_pending_count;
@@ -1211,7 +1294,7 @@ static int xhci_port_reset(xhci_ctrl_t *c, uint8 port_idx, uint8 speed) {
         portsc = op_read32(c, XHCI_PORTSC(port_idx));
     }
 
-    //on some 0.96 controllers setting PR might not clear automatically or 
+    //on some 0.96 controllers setting PR might not clear automatically or
     //might require specific timing
     op_write32(c, XHCI_PORTSC(port_idx), (portsc & ~PORTSC_W1C_MASK) | PORTSC_PR);
 
@@ -1219,7 +1302,7 @@ static int xhci_port_reset(xhci_ctrl_t *c, uint8 port_idx, uint8 speed) {
     bool success = false;
     for (uint32 elapsed = 0; elapsed < 500; elapsed++) {
         portsc = op_read32(c, XHCI_PORTSC(port_idx));
-        
+
         //in 1.0+, we wait for PRC but in 0.96 we check if PR has cleared or PED is set
         if (is_v096) {
             if (!(portsc & PORTSC_PR) || (portsc & PORTSC_PED)) {
@@ -1256,17 +1339,17 @@ static int xhci_port_reset(xhci_ctrl_t *c, uint8 port_idx, uint8 speed) {
     if (is_superspeed && pls == PORTSC_PLS_POLLING) {
         printf("[xhci] port %u: SS stuck in Polling, attempting Warm Reset\n", port_idx);
         op_write32(c, XHCI_PORTSC(port_idx), (portsc & ~PORTSC_W1C_MASK) | PORTSC_WPR);
-        
+
         for (uint32 elapsed = 0; elapsed < 500; elapsed++) {
             portsc = op_read32(c, XHCI_PORTSC(port_idx));
             if (portsc & PORTSC_WRC) break;
             sleep(1);
         }
-        
+
         //clear WRC
         portsc = op_read32(c, XHCI_PORTSC(port_idx));
         op_write32(c, XHCI_PORTSC(port_idx), (portsc & ~PORTSC_W1C_MASK) | PORTSC_WRC);
-        
+
         portsc = op_read32(c, XHCI_PORTSC(port_idx));
         if (portsc & PORTSC_PED) return 0;
         pls = (portsc & PORTSC_PLS_MASK) >> PORTSC_PLS_SHIFT;
@@ -1286,7 +1369,7 @@ static bool xhci_port_polling_recovery(xhci_ctrl_t *c, uint8 port_idx) {
     if (pls != PORTSC_PLS_POLLING && pls != PORTSC_PLS_COMP_MOD) return false;
 
     //first try one more normal reset, then some ports need to be fucking abused
-    //this spec is bullshit it says we gotta do this ONCE AND cleanly 
+    //this spec is bullshit it says we gotta do this ONCE AND cleanly
     //EXACLY in xHCI spec § 4.3.1 - resetting a root hub port
     //but manufactuers making controlelrs don't follow it
     if (xhci_port_reset(c, port_idx, speed) == 0) {
@@ -1699,6 +1782,7 @@ static void xhci_init_ctrl(pci_device_t *pci) {
     c->pci = pci;
     xhci_apply_pci_quirks(c, pci);
     printf("[xhci] stage 1: quirks applied\n");
+    xhci_intel_route_ports_to_xhci(c);
     if (pci->vendor_id == 0x1033 && pci->device_id == 0x0194) {
         pci_disable_link_power_management(pci);
     }
@@ -1751,6 +1835,7 @@ static void xhci_init_ctrl(pci_device_t *pci) {
     printf("[xhci] version 0x%04X ctx_size=%u max_ports=%u max_slots=%u scratchpads=%u dma32=%u\n",
            c->hci_ver, c->ctx_size, c->max_ports, c->max_slots,
            c->scratchpad_count, c->dma32_only ? 1 : 0);
+    xhci_decode_supported_protocols(c, hccparams1);
     printf("[xhci] stage 4: capability decode done\n");
 
     if (!(pagesize & 0x1)) {
@@ -1913,8 +1998,13 @@ static void xhci_init_ctrl(pci_device_t *pci) {
     op_write32(c, XHCI_OP_CONFIG, CONFIG_MAX_SLOTS_EN(c->max_slots));
 
     //interrupts
-    if (xhci_enable_interrupts(c) < 0)
-        printf("[xhci] MSI/MSI-X unavailable - interrupts will not work\n");
+    if (xhci_enable_interrupts(c) < 0) {
+        //some early controllers either lack MSI-X or have broken MSI delivery,
+        //command paths already poll while waiting but HID interrupt endpoints
+        //need a event-ring drain too or input dies after enumeration
+        c->event_polling = true;
+        printf("[xhci] MSI/MSI-X unavailable - using event polling\n");
+    }
     printf("[xhci] stage 16: interrupt setup done\n");
 
     //start controller
@@ -1938,6 +2028,17 @@ static void xhci_init_ctrl(pci_device_t *pci) {
         g_ctrls[g_ctrl_count++]  = c;
     }
     spinlock_irq_release(&g_ctrl_lock, ctrl_flags);
+
+    if (c->event_polling) {
+        process_t *kernel = process_get_kernel();
+        thread_t *poll_thread = kernel ? thread_create(kernel, xhci_event_poll_worker, c) : NULL;
+        if (poll_thread) {
+            sched_add(poll_thread);
+            printf("[xhci] event polling fallback enabled\n");
+        } else {
+            printf("[xhci] event polling fallback unavailable\n");
+        }
+    }
 
     if (!xhci_has_quirk(c, XHCI_QUIRK_RENESAS_FW_LOAD)) {
         xhci_nec_get_fw(c);
@@ -1991,6 +2092,26 @@ static void xhci_scan_controllers(void) {
             xhci_init_ctrl(pdev);
         }
         pdev = pdev->next;
+    }
+}
+
+static void xhci_event_poll_worker(void *arg) {
+    xhci_ctrl_t *c = (xhci_ctrl_t *)arg;
+    uint32 hid_recovery_count = 0;
+
+    //fallback for controllers where interrupt delivery is unreliable
+    //keep the same event/recovery path as xhci_irq so polling and MSI behavior
+    //stay identical apart from how the drain is triggered
+    while (c && c->event_polling) {
+        xhci_process_events(c);
+        if (__atomic_exchange_n(&c->hid_recovery_needed, false, __ATOMIC_ACQ_REL)) {
+            hid_recovery_count++;
+            if (hid_recovery_count <= 16) {
+                printf("[xhci] HID endpoint recovery pass %u\n", hid_recovery_count);
+            }
+            xhci_recover_hid_endpoints(c);
+        }
+        sleep(1);
     }
 }
 

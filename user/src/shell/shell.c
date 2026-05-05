@@ -153,9 +153,12 @@ int main(int argc, char *argv[]) {
                 pos--;
                 puts("\b \b");
             }
+            putc('\n');
+            shell_show_prompt();
             continue;
         }
 
+        //ctrl and alt combos are handled as control paths not text input
         if (ev.mods & (KBD_MOD_CTRL | KBD_MOD_ALT)) {
             continue;
         }

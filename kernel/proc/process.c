@@ -280,19 +280,16 @@ void process_destroy(process_t *proc) {
 }
 
 void process_exit(process_t *proc, int code) {
-    thread_t *thread;
-
     if (!proc) return;
 
     spinlock_acquire(&proc->lock);
-    proc->exit_code = code;
-    proc->state = PROC_STATE_ZOMBIE;
-    for (thread = proc->threads; thread; thread = thread->next) {
-        thread->state = THREAD_STATE_DEAD;
+    if (proc->state == PROC_STATE_ZOMBIE || proc->state == PROC_STATE_DEAD) {
+        spinlock_release(&proc->lock);
+        return;
     }
+    proc->exit_code = code;
+    proc->state = PROC_STATE_DEAD;
     spinlock_release(&proc->lock);
-
-    thread_wake_all(&proc->exit_wait);
 }
 
 object_t *process_get_object(process_t *proc) {

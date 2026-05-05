@@ -11,8 +11,14 @@ _Static_assert(__builtin_offsetof(arch_context_t, r15) == 40, "CTX_R15 offset ch
 _Static_assert(__builtin_offsetof(arch_context_t, rip) == 48, "CTX_RIP offset changed");
 _Static_assert(__builtin_offsetof(arch_context_t, rsp) == 56, "CTX_RSP offset changed");
 _Static_assert(__builtin_offsetof(arch_context_t, rflags) == 64, "CTX_RFLAGS offset changed");
+_Static_assert(__builtin_offsetof(arch_context_t, cs) == 72, "CTX_CS offset changed");
+_Static_assert(__builtin_offsetof(arch_context_t, ss) == 80, "CTX_SS offset changed");
 _Static_assert(__builtin_offsetof(arch_context_t, rax) == 88, "CTX_RAX offset changed");
 _Static_assert(__builtin_offsetof(arch_context_t, rdi) == 96, "CTX_RDI offset changed");
 _Static_assert(__builtin_offsetof(arch_context_t, rsi) == 104, "CTX_RSI offset changed");
 _Static_assert(__builtin_offsetof(arch_context_t, rdx) == 112, "CTX_RDX offset changed");
+_Static_assert(__builtin_offsetof(arch_context_t, r10) == 120, "CTX_R10 offset changed");
+_Static_assert(__builtin_offsetof(arch_context_t, r8) == 128, "CTX_R8 offset changed");
+_Static_assert(__builtin_offsetof(arch_context_t, r9) == 136, "CTX_R9 offset changed");
+_Static_assert(__builtin_offsetof(arch_context_t, r11) == 144, "CTX_R11 offset changed");
 _Static_assert(__builtin_offsetof(arch_context_t, rcx) == 152, "CTX_RCX offset changed");

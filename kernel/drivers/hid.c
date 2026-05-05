@@ -505,10 +505,6 @@ static uint8 hid_mods_to_kbd_mods(uint8 hid_mod) {
 static void hid_push_key(uint8 keycode, uint8 mods, uint8 pressed) {
     channel_endpoint_t *ep = get_kbd_ep();
     if (!ep) return;
-    if (channel_queue_full(ep)) return;
-
-    kbd_event_t *ev = kmalloc(sizeof(kbd_event_t));
-    if (!ev) return;
 
     bool shift = !!(mods & KBD_MOD_SHIFT);
     char ascii = pressed
@@ -516,15 +512,20 @@ static void hid_push_key(uint8 keycode, uint8 mods, uint8 pressed) {
                  : hid_keycode_to_ascii[keycode])
         : 0;
 
+    if (pressed && (mods & KBD_MOD_CTRL) && (ascii == 'c' || ascii == 'C')) {
+        keyboard_queue_interrupt(proc_get_console_foreground_pid());
+    }
+
+    if (channel_queue_full(ep)) return;
+
+    kbd_event_t *ev = kmalloc(sizeof(kbd_event_t));
+    if (!ev) return;
+
     ev->keycode   = keycode;
     ev->mods      = mods;
     ev->pressed   = pressed;
     ev->_pad      = 0;
     ev->codepoint = (uint32)(unsigned char)ascii;
-
-    if (pressed && (mods & KBD_MOD_CTRL) && (ascii == 'c' || ascii == 'C')) {
-        keyboard_queue_interrupt(proc_get_console_foreground_pid());
-    }
 
     push_to_channel(ep, ev, sizeof(kbd_event_t));
 }

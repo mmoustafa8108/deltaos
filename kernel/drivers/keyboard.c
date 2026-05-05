@@ -163,9 +163,13 @@ void keyboard_queue_interrupt(uint64 pid) {
     if (pid == 0) return;
 
     flags = spinlock_irq_acquire(&ctrlc_lock);
-    ctrlc_pending_pid = pid;
+    if (ctrlc_pending_pid == 0) {
+        ctrlc_pending_pid = pid;
+        spinlock_irq_release(&ctrlc_lock, flags);
+        thread_wake_one(&ctrlc_wait);
+        return;
+    }
     spinlock_irq_release(&ctrlc_lock, flags);
-    thread_wake_one(&ctrlc_wait);
 }
 
 //ctrl+c posts are deferred so IRQ context never takes process/event locks
@@ -327,13 +331,15 @@ void keyboard_start(void) {
         spinlock_irq_release(&ctrlc_lock, flags);
         return;
     }
-    ctrlc_worker_started = true;
     spinlock_irq_release(&ctrlc_lock, flags);
 
     process_t *kernel = process_get_kernel();
     thread_t *thread = kernel ? thread_create(kernel, keyboard_ctrlc_worker, NULL) : NULL;
     if (thread) {
         sched_add(thread);
+        flags = spinlock_irq_acquire(&ctrlc_lock);
+        ctrlc_worker_started = true;
+        spinlock_irq_release(&ctrlc_lock, flags);
     } else {
         printf("[keyboard] failed to start Ctrl+C worker\n");
     }

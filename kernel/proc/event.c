@@ -9,10 +9,6 @@ static int proc_event_is_deliverable_to_handler(uint32 event) {
     return event != PROC_EVENT_TERMINATE && event != PROC_EVENT_WAKE;
 }
 
-static int proc_event_default_consumes(uint32 event) {
-    return event == PROC_EVENT_TERMINATE || event == PROC_EVENT_INTERRUPT;
-}
-
 static int proc_event_default_action(thread_t *thread, uint32 event) {
     process_t *proc;
 
@@ -92,9 +88,7 @@ static int proc_deliver_pending_to_ctx(thread_t *thread, arch_context_t *ctx, ui
         }
     }
 
-    if (found &&
-        ((action.entry != 0 && proc_event_is_deliverable_to_handler(event)) ||
-         proc_event_default_consumes(event))) {
+    if (found) {
         proc->pending_events &= ~PROC_EVENT_BIT(event);
     }
     spinlock_irq_release(&proc->event_lock, event_flags);
@@ -193,6 +187,11 @@ int proc_set_console_foreground(process_t *caller, uint64 pid) {
     }
 
     irq_state_t flags = spinlock_irq_acquire(&console_fg_lock);
+    if (console_foreground_pid != 0 && console_foreground_pid != caller->pid) {
+        spinlock_irq_release(&console_fg_lock, flags);
+        process_unref(target);
+        return -1;
+    }
     console_foreground_pid = pid;
     spinlock_irq_release(&console_fg_lock, flags);
     process_unref(target);

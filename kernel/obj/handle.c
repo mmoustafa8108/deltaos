@@ -220,7 +220,7 @@ ssize handle_read(handle_t h, void *buf, size len) {
     
     proc_handle_t *entry = process_get_handle_entry(proc, h);
     if (!entry) return -2;
-    if (!rights_has(entry->rights, HANDLE_RIGHT_READ)) return -4;
+    if (!rights_has(entry->rights, HANDLE_RIGHT_READ)) return -2;
     if (!entry->obj->ops || !entry->obj->ops->read) return -3;
     
     ssize result = entry->obj->ops->read(entry->obj, buf, len, entry->offset);

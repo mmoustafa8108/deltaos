@@ -70,8 +70,10 @@ typedef struct process {
     
     int64 exit_code;
     wait_queue_t exit_wait;
+    //protected by proc_lock process_find_ref process_ref and process_unref
     //keeps raw process_t users stable after lookup until process_unref()
     uint32 refcount;
+    //protected by proc_lock so process lookup and teardown agree
     //set once the process leaves process_list so new lookups ignore it
     uint8 destroying;
 
